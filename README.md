@@ -85,25 +85,50 @@ define their own card or badge markup.
   functions (`findOrders`, `findOrderById`, `getAnalyticsSummary`, …) that already look like a
   database layer, so swapping the seed for Prisma/Postgres later would not require touching
   anything above it. It's marked `import "server-only"` so a Client Component importing it directly
-  is a **build error**, not a code-review catch.
-- `src/app/api/**/route.ts` are Next.js Route Handlers acting as the mock REST API. Every response
-  is wrapped in a `{ ok: true, data }` / `{ ok: false, error }` envelope, so success and failure are
-  distinguishable independent of HTTP status.
-- `src/lib/api/client.ts` is the single `fetch` wrapper: it resolves relative vs. absolute URLs
-  (needed because `fetch` on the server requires an absolute URL), applies a timeout via
-  `AbortController`, and normalises every failure mode — thrown, non-2xx, malformed JSON — into one
-  `ApiError` type.
-- `src/lib/transforms/guards.ts` is hand-written runtime validation. TypeScript types are erased at
-  build time, so `response.json() as Order[]` is an assertion, not a guarantee — a backend that
-  renames a field produces a crash deep inside a component. The guards convert that into a single
-  `MALFORMED_RESPONSE` error at the network boundary, which the UI already knows how to render (see
-  `ErrorState`).
-- `src/lib/api/services.ts` is what components actually call (`ordersService.list(query)`,
-  `analyticsService.getSummary()`). Each function: builds the URL → calls the client → runs the
-  guard → returns a typed value. No component calls `fetch` directly.
-- **UI components never see raw API data** — they receive values already run through this chain, so
-  no hardcoded data lives inside a `.tsx` file. See `src/app/page.tsx` and `src/app/orders/page.tsx`
-  for how sections call the service layer.
+  is a **build error**, not a code-review catch. Every function is wrapped in React's `cache()`, so
+  calling the same function twice in one render (the dashboard's metrics and charts sections both
+  need `getAnalyticsSummary(30)`) computes it once, not twice.
+- `src/app/api/**/route.ts` are Next.js Route Handlers acting as a real REST API, wrapped in an
+  `{ ok: true, data }` / `{ ok: false, error }` envelope so success and failure are distinguishable
+  independent of HTTP status. **Pages do not call these routes internally** — see the callout below.
+- `src/lib/api/client.ts` and `src/lib/api/services.ts` are a typed fetch client + service layer
+  (timeouts, error normalisation into one `ApiError` type, runtime-validated responses via
+  `src/lib/transforms/guards.ts`). This is the layer a genuine client-side consumer uses —
+  currently that's `ActivityFeed`'s "Refresh" button, the one interaction on this app that actually
+  originates in the browser after the initial page load.
+- **UI components never see raw, unvalidated API data** — server-rendered pages get it from the
+  repository directly (typed by TypeScript, no network boundary to validate), and the one
+  client-fetch path runs the same runtime guards as everything else. No component hardcodes data.
+
+### Server Components do not fetch their own API routes
+
+Early versions of the three pages (`/`, `/orders`, `/orders/[id]`) had their Server Components call
+`ordersService.list()` / `analyticsService.getSummary()` — a `fetch()` to this app's own
+`/api/orders`, `/api/analytics`, etc., resolved to an absolute URL (`VERCEL_URL` in production,
+`localhost` in dev).
+
+**That worked locally and failed in production** — the dashboard rendered fine with `npm run dev` /
+`npm run start`, but the same route on Vercel showed the generic error boundary ("We couldn't load
+this page"). The cause: on `localhost`, the self-fetch really is local and cheap. On Vercel, each
+request runs in its own serverless function invocation; that function making an HTTP round trip
+back out to its own public URL is a well-documented Next.js/Vercel anti-pattern — it doubles
+function invocations, adds real network latency for no benefit, and depending on the platform's
+routing/protection for that specific deployment it can fail outright rather than just being slow.
+
+The fix: since a Server Component already executes on the server, it calls the repository function
+directly —
+
+```tsx
+// Before: an unnecessary HTTP round trip to this app's own API
+const summary = await analyticsService.getSummary(30, { cache: "no-store" });
+
+// After: a plain server-side function call
+const summary = await getAnalyticsSummary(30);
+```
+
+The Route Handlers under `app/api/` are unchanged and still real, working endpoints — they're what
+a genuinely client-originated request (like `ActivityFeed`'s refresh button) correctly calls over
+HTTP, and what an external consumer of this API would use.
 
 ---
 

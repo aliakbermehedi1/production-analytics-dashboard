@@ -4,7 +4,7 @@ import { Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { OrdersFilters } from "@/components/orders/OrdersFilters";
 import { OrdersTable } from "@/components/orders/OrdersTable";
 import { Pagination } from "@/components/orders/Pagination";
-import { ordersService } from "@/lib/api/services";
+import { findOrders } from "@/server/data/repository";
 import { parseOrderQuery, hasActiveFilters } from "@/lib/utils/query";
 import { formatNumber } from "@/lib/utils/format";
 import type { OrderQuery } from "@/types/domain";
@@ -12,11 +12,18 @@ import type { OrderQuery } from "@/types/domain";
 /**
  * Orders — a Server Component that reads its entire state from the URL.
  *
- * There is no client-side data fetching on this route. A filter change is a
- * navigation; Next re-runs this component on the server with new `searchParams`
- * and streams back only the changed part of the tree. The filter bar and
- * pagination are Client Components because they *write* to the URL, but they
- * never hold the results.
+ * There is no client-side data fetching on this route, and — as of this
+ * version — no server-side HTTP fetching either: `OrdersResults` calls
+ * `findOrders` from the repository directly rather than requesting this app's
+ * own `/api/orders` route. A Server Component making an HTTP call back to its
+ * own API is unnecessary indirection at best, and on serverless platforms
+ * like Vercel it is a self-referential network request that can be slow or
+ * fail outright — see the comment in `app/page.tsx` for the full reasoning.
+ *
+ * A filter change is still a navigation; Next re-runs this component on the
+ * server with new `searchParams` and streams back only the changed part of
+ * the tree. The filter bar and pagination are Client Components because they
+ * *write* to the URL, but they never hold the results.
  */
 
 export const metadata = { title: "Orders" };
@@ -57,7 +64,7 @@ export default async function OrdersPage({
 }
 
 async function OrdersResults({ query }: { query: OrderQuery }) {
-  const result = await ordersService.list(query, { cache: "no-store" });
+  const result = await findOrders(query);
 
   if (result.items.length === 0) {
     // The empty state distinguishes "no data at all" from "no matches" —

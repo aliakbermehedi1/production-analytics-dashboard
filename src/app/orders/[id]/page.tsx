@@ -1,45 +1,34 @@
-import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, CardHeader, StatusBadge } from "@/components/ui/primitives";
 import { Header } from "@/components/layout/Header";
-import { ordersService } from "@/lib/api/services";
+import { findOrderById } from "@/server/data/repository";
 import {
   formatCurrencyPrecise,
   formatDateTime,
   formatNumber,
 } from "@/lib/utils/format";
-import { ApiError } from "@/types/api";
 import type { OrderDetail } from "@/types/domain";
 
 /**
  * Order detail — a Server Component.
  *
+ * Calls `findOrderById` from the repository directly rather than fetching this
+ * app's own `/api/orders/:id` route — see `app/page.tsx` for why a Server
+ * Component fetching its own API route is avoided here. `findOrderById` is
+ * already wrapped in React's `cache()` in the repository, so calling it here
+ * and again in `generateMetadata` still only runs the lookup once per request.
+ *
  * Nothing on this page is interactive, so nothing here reaches the client
- * bundle. A `NOT_FOUND` from the service is translated into Next's `notFound()`
- * so a bad id renders the 404 route rather than the generic error boundary.
+ * bundle. A missing id renders Next's `notFound()` 404 route rather than the
+ * generic error boundary.
  */
 
-/**
- * Wrapped in React's `cache` so `generateMetadata` and the component itself
- * share one fetch per request instead of hitting the API twice for the same
- * record.
- */
-const loadOrder = cache(async (id: string): Promise<OrderDetail> => {
-  try {
-    return await ordersService.getById(id);
-  } catch (error) {
-    if (error instanceof ApiError && error.code === "NOT_FOUND") {
-      // Called from `generateMetadata` first, which runs *before* the response
-      // starts streaming. That ordering matters: once the shell has been
-      // flushed the status line is already on the wire, and a `notFound()` from
-      // inside the component body would render the 404 page under a 200.
-      notFound();
-    }
-    // Anything else is a genuine failure — let error.tsx handle it.
-    throw error;
-  }
-});
+async function loadOrder(id: string): Promise<OrderDetail> {
+  const order = await findOrderById(id);
+  if (!order) notFound();
+  return order;
+}
 
 export async function generateMetadata({
   params,

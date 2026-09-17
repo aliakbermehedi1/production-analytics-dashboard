@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { db, DAY_MS, isoDate } from "./seed";
 import {
   ORDER_STATUSES,
@@ -46,64 +47,81 @@ const stripDetail = (order: OrderDetail): Order => {
   return summary;
 };
 
-export async function findOrders(query: OrderQuery): Promise<Paginated<Order>> {
-  await delay(320);
+/**
+ * Every exported function here is wrapped in React's `cache()`. Within one
+ * request/render, calling e.g. `getAnalyticsSummary(30)` twice — which happens
+ * because the dashboard's metrics and charts sections both need it —
+ * de-duplicates to a single execution instead of computing it twice. `cache()`
+ * keys on argument identity, so this is transparent to the callers.
+ */
 
-  const search = query.search.trim().toLowerCase();
-  const fromTime = query.from ? new Date(`${query.from}T00:00:00.000Z`).getTime() : null;
-  const toTime = query.to ? new Date(`${query.to}T23:59:59.999Z`).getTime() : null;
+export const findOrders = cache(
+  async (query: OrderQuery): Promise<Paginated<Order>> => {
+    await delay(320);
 
-  const filtered = db.orders.filter((order) => {
-    if (query.status !== "all" && order.status !== query.status) return false;
+    const search = query.search.trim().toLowerCase();
+    const fromTime = query.from ? new Date(`${query.from}T00:00:00.000Z`).getTime() : null;
+    const toTime = query.to ? new Date(`${query.to}T23:59:59.999Z`).getTime() : null;
 
-    if (fromTime !== null || toTime !== null) {
-      const placed = new Date(order.placedAt).getTime();
-      if (fromTime !== null && placed < fromTime) return false;
-      if (toTime !== null && placed > toTime) return false;
-    }
+    const filtered = db.orders.filter((order) => {
+      if (query.status !== "all" && order.status !== query.status) return false;
 
-    if (search) {
-      const haystack = `${order.reference} ${order.customerName} ${order.customerEmail}`;
-      if (!haystack.toLowerCase().includes(search)) return false;
-    }
+      if (fromTime !== null || toTime !== null) {
+        const placed = new Date(order.placedAt).getTime();
+        if (fromTime !== null && placed < fromTime) return false;
+        if (toTime !== null && placed > toTime) return false;
+      }
 
-    return true;
-  });
+      if (search) {
+        const haystack = `${order.reference} ${order.customerName} ${order.customerEmail}`;
+        if (!haystack.toLowerCase().includes(search)) return false;
+      }
 
-  const totalItems = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
-  // Clamp rather than 404: a filter change can legitimately leave the user on a
-  // page that no longer exists, and showing the last valid page beats an error.
-  const page = Math.min(Math.max(1, query.page), totalPages);
-  const start = (page - 1) * query.pageSize;
+      return true;
+    });
 
-  return {
-    items: filtered.slice(start, start + query.pageSize).map(stripDetail),
-    page,
-    pageSize: query.pageSize,
-    totalItems,
-    totalPages,
-  };
-}
+    const totalItems = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
+    // Clamp rather than 404: a filter change can legitimately leave the user on
+    // a page that no longer exists, and showing the last valid page beats an
+    // error.
+    const page = Math.min(Math.max(1, query.page), totalPages);
+    const start = (page - 1) * query.pageSize;
 
-export async function findOrderById(id: string): Promise<OrderDetail | null> {
-  await delay(260);
-  return db.orders.find((order) => order.id === id) ?? null;
-}
+    return {
+      items: filtered.slice(start, start + query.pageSize).map(stripDetail),
+      page,
+      pageSize: query.pageSize,
+      totalItems,
+      totalPages,
+    };
+  },
+);
 
-export async function findRecentOrders(limit: number): Promise<Order[]> {
-  await delay(280);
-  return db.orders.slice(0, limit).map(stripDetail);
-}
+export const findOrderById = cache(
+  async (id: string): Promise<OrderDetail | null> => {
+    await delay(260);
+    return db.orders.find((order) => order.id === id) ?? null;
+  },
+);
+
+export const findRecentOrders = cache(
+  async (limit: number): Promise<Order[]> => {
+    await delay(280);
+    return db.orders.slice(0, limit).map(stripDetail);
+  },
+);
 
 /* -------------------------------------------------------------------------- */
 /*                                 Activities                                 */
 /* -------------------------------------------------------------------------- */
 
-export async function findActivities(limit: number): Promise<SystemActivity[]> {
-  await delay(300);
-  return db.activities.slice(0, limit);
-}
+export const findActivities = cache(
+  async (limit: number): Promise<SystemActivity[]> => {
+    await delay(300);
+    return db.activities.slice(0, limit);
+  },
+);
 
 /* -------------------------------------------------------------------------- */
 /*                                 Analytics                                  */
@@ -156,56 +174,58 @@ function seriesFor(
   }));
 }
 
-export async function getAnalyticsSummary(windowDays = 30): Promise<AnalyticsSummary> {
-  await delay(380);
+export const getAnalyticsSummary = cache(
+  async (windowDays = 30): Promise<AnalyticsSummary> => {
+    await delay(380);
 
-  const end = db.now.getTime();
-  const start = end - (windowDays - 1) * DAY_MS;
-  const prevEnd = start - 1;
-  const prevStart = prevEnd - (windowDays - 1) * DAY_MS;
+    const end = db.now.getTime();
+    const start = end - (windowDays - 1) * DAY_MS;
+    const prevEnd = start - 1;
+    const prevStart = prevEnd - (windowDays - 1) * DAY_MS;
 
-  const inWindow = (from: number, to: number) =>
-    db.orders.filter((order) => {
-      const placed = new Date(order.placedAt).getTime();
-      return placed >= from && placed <= to;
-    });
+    const inWindow = (from: number, to: number) =>
+      db.orders.filter((order) => {
+        const placed = new Date(order.placedAt).getTime();
+        return placed >= from && placed <= to;
+      });
 
-  const current = inWindow(start, end);
-  const previous = inWindow(prevStart, prevEnd);
+    const current = inWindow(start, end);
+    const previous = inWindow(prevStart, prevEnd);
 
-  const revenueOf = (orders: typeof db.orders) =>
-    Math.round(
-      orders
-        .filter((o) => REVENUE_STATUSES.has(o.status))
-        .reduce((sum, o) => sum + o.total, 0) * 100,
-    ) / 100;
+    const revenueOf = (orders: typeof db.orders) =>
+      Math.round(
+        orders
+          .filter((o) => REVENUE_STATUSES.has(o.status))
+          .reduce((sum, o) => sum + o.total, 0) * 100,
+      ) / 100;
 
-  const activeCustomersOf = (orders: typeof db.orders) =>
-    new Set(orders.map((o) => o.customerId)).size;
+    const activeCustomersOf = (orders: typeof db.orders) =>
+      new Set(orders.map((o) => o.customerId)).size;
 
-  // Conversion rate is modelled as "orders per session", with sessions derived
-  // from a fixed multiplier. In a real system this would come from an analytics
-  // provider; it is kept as an explicit assumption rather than a magic number
-  // buried in the UI.
-  const SESSIONS_PER_ORDER = 23.5;
-  const conversionOf = (orders: typeof db.orders) => {
-    const sessions = orders.length * SESSIONS_PER_ORDER;
-    return sessions === 0 ? 0 : Math.round((orders.length / sessions) * 10000) / 10000;
-  };
+    // Conversion rate is modelled as "orders per session", with sessions
+    // derived from a fixed multiplier. In a real system this would come from
+    // an analytics provider; it is kept as an explicit assumption rather than
+    // a magic number buried in the UI.
+    const SESSIONS_PER_ORDER = 23.5;
+    const conversionOf = (orders: typeof db.orders) => {
+      const sessions = orders.length * SESSIONS_PER_ORDER;
+      return sessions === 0 ? 0 : Math.round((orders.length / sessions) * 10000) / 10000;
+    };
 
-  return {
-    totalRevenue: buildMetric(revenueOf(current), revenueOf(previous)),
-    totalOrders: buildMetric(current.length, previous.length),
-    activeCustomers: buildMetric(
-      activeCustomersOf(current),
-      activeCustomersOf(previous),
-    ),
-    conversionRate: buildMetric(conversionOf(current), conversionOf(previous)),
-    revenueSeries: seriesFor(start, end, (b) => b.revenue),
-    ordersSeries: seriesFor(start, end, (b) => b.orders),
-    statusBreakdown: buildStatusBreakdown(current),
-  };
-}
+    return {
+      totalRevenue: buildMetric(revenueOf(current), revenueOf(previous)),
+      totalOrders: buildMetric(current.length, previous.length),
+      activeCustomers: buildMetric(
+        activeCustomersOf(current),
+        activeCustomersOf(previous),
+      ),
+      conversionRate: buildMetric(conversionOf(current), conversionOf(previous)),
+      revenueSeries: seriesFor(start, end, (b) => b.revenue),
+      ordersSeries: seriesFor(start, end, (b) => b.orders),
+      statusBreakdown: buildStatusBreakdown(current),
+    };
+  },
+);
 
 /**
  * Counts orders per status within the window and sorts by share descending, so

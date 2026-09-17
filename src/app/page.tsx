@@ -6,7 +6,11 @@ import { TrendChart } from "@/components/dashboard/TrendChart";
 import { StatusBreakdown } from "@/components/dashboard/StatusBreakdown";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
-import { analyticsService, ordersService, activitiesService } from "@/lib/api/services";
+import {
+  getAnalyticsSummary,
+  findRecentOrders,
+  findActivities,
+} from "@/server/data/repository";
 import {
   formatCurrency,
   formatNumber,
@@ -16,10 +20,26 @@ import {
 /**
  * Dashboard — a Server Component.
  *
- * The page is split into three independently-suspended sections rather than one
- * `await` at the top. Each section fetches its own data, so the metrics can
- * paint as soon as analytics resolves without waiting on the orders query, and
- * a slow endpoint degrades one card instead of the whole page.
+ * Sections call the repository layer directly (`getAnalyticsSummary`,
+ * `findRecentOrders`, `findActivities`) rather than fetching this app's own
+ * `/api/*` route handlers over HTTP.
+ *
+ * That is a deliberate change from an earlier version of this page, which did
+ * fetch its own API routes. That works locally (`localhost` really is
+ * localhost), but on Vercel each request runs in its own serverless function;
+ * having that function make a self-referential HTTP call to its own public
+ * URL is a well-documented anti-pattern — it doubles function invocations,
+ * adds a full network round trip for no benefit, and can fail outright
+ * depending on the platform's routing for that request. Since a Server
+ * Component already runs on the server, calling the data function directly is
+ * both simpler and correct. The route handlers still exist as a real HTTP API
+ * — they're what `ActivityFeed`'s client-side "Refresh" button calls, since
+ * that request genuinely originates in the browser.
+ *
+ * The page is still split into three independently-suspended sections: each
+ * fetches its own data, so the metrics can paint as soon as analytics
+ * resolves without waiting on the orders query, and a slow section degrades
+ * only itself.
  */
 
 export const metadata = { title: "Dashboard" };
@@ -71,14 +91,22 @@ export default function DashboardPage() {
 
 /**
  * Analytics is fetched once and shared by the metrics and charts sections.
- * Both call `analyticsService.getSummary()` with identical arguments, and
- * React's request deduplication collapses them into a single fetch for the
- * duration of the render — so the split into two Suspense boundaries costs
- * nothing in requests.
+ * Both call `getAnalyticsSummary()` with identical arguments, and React's
+ * `cache()`-based request deduplication (see the repository) collapses them
+ * into a single computation for the duration of the render — so the split
+ * into two Suspense boundaries costs nothing extra.
+ */
+
+/**
+ * Analytics is fetched once and shared by the metrics and charts sections.
+ * Both call `getAnalyticsSummary()` with identical arguments, and React's
+ * `cache()`-based request deduplication (see the repository) collapses them
+ * into a single computation for the duration of the render — so the split
+ * into two Suspense boundaries costs nothing extra.
  */
 
 async function MetricsSection() {
-  const summary = await analyticsService.getSummary(30, { cache: "no-store" });
+  const summary = await getAnalyticsSummary(30);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -111,7 +139,7 @@ async function MetricsSection() {
 }
 
 async function ChartsSection() {
-  const summary = await analyticsService.getSummary(30, { cache: "no-store" });
+  const summary = await getAnalyticsSummary(30);
 
   return (
     <div className="grid gap-5 xl:grid-cols-3">
@@ -147,13 +175,14 @@ async function ChartsSection() {
 }
 
 async function RecentOrdersSection() {
-  const orders = await ordersService.recent(6, { cache: "no-store" });
+  const orders = await findRecentOrders(6);
   return <RecentOrders orders={orders} />;
 }
 
 async function ActivitySection() {
-  const activities = await activitiesService.list(8, { cache: "no-store" });
-  // Server-rendered initial data; the component refreshes itself from there.
+  const activities = await findActivities(8);
+  // Server-rendered initial data; the component refreshes itself from there
+  // via a genuine client-side fetch to /api/activities (see ActivityFeed).
   return <ActivityFeed initialActivities={activities} limit={8} />;
 }
 
