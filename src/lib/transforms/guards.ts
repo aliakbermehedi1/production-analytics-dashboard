@@ -179,6 +179,17 @@ function parseSeries(value: unknown, path: string): TimeSeriesPoint[] {
   });
 }
 
+function parseStatusBreakdown(value: unknown, path: string) {
+  return arr(value, path).map((entry, i) => {
+    const s = obj(entry, `${path}[${i}]`);
+    return {
+      status: oneOf<OrderStatus>(s.status, ORDER_STATUSES, `${path}[${i}].status`),
+      count: int(s.count, `${path}[${i}].count`),
+      share: num(s.share, `${path}[${i}].share`),
+    };
+  });
+}
+
 export function parseAnalyticsSummary(value: unknown): AnalyticsSummary {
   const a = obj(value, "analytics");
   return {
@@ -188,5 +199,6 @@ export function parseAnalyticsSummary(value: unknown): AnalyticsSummary {
     conversionRate: parseMetric(a.conversionRate, "analytics.conversionRate"),
     revenueSeries: parseSeries(a.revenueSeries, "analytics.revenueSeries"),
     ordersSeries: parseSeries(a.ordersSeries, "analytics.ordersSeries"),
+    statusBreakdown: parseStatusBreakdown(a.statusBreakdown, "analytics.statusBreakdown"),
   };
 }

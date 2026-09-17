@@ -1,7 +1,12 @@
 "use client";
 
 import { memo, useCallback, useId, useMemo, useState } from "react";
-import { formatShortDate, cn } from "@/lib/utils/format";
+import {
+  formatShortDate,
+  formatCompactCurrency,
+  formatNumber,
+  cn,
+} from "@/lib/utils/format";
 import type { TimeSeriesPoint } from "@/types/domain";
 
 /**
@@ -19,24 +24,42 @@ const VIEWBOX_WIDTH = 720;
 const VIEWBOX_HEIGHT = 200;
 const PADDING = { top: 12, right: 8, bottom: 22, left: 8 };
 
+/**
+ * A lookup rather than a prop function.
+ *
+ * The Server Component parent cannot pass `formatCompactCurrency` itself as a
+ * prop — the React Server Components boundary only allows serializable values
+ * (strings, numbers, plain objects/arrays) to cross from server to client,
+ * and a function reference is not serializable. Passing one throws exactly the
+ * "Functions cannot be passed directly to Client Components" error. The fix is
+ * to send a plain string tag and resolve it to the real formatter *inside* the
+ * Client Component, where the function actually lives.
+ */
+const FORMATTERS = {
+  currency: formatCompactCurrency,
+  number: formatNumber,
+} as const;
+
+type FormatType = keyof typeof FORMATTERS;
+
 interface TrendChartProps {
   data: TimeSeriesPoint[];
   variant: "area" | "bar";
-  /** Formats the value shown in the tooltip and on the y-axis guides. */
-  formatValue: (value: number) => string;
+  formatType: FormatType;
   ariaLabel: string;
 }
 
 function TrendChartImpl({
   data,
   variant,
-  formatValue,
+  formatType,
   ariaLabel,
 }: TrendChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   // useId keeps the gradient id unique when two charts render on one page —
   // duplicate SVG ids would make the second chart reference the first's fill.
   const gradientId = useId();
+  const formatValue = FORMATTERS[formatType];
 
   /**
    * Geometry is derived from `data` only. Without useMemo this recomputes on

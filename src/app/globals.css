@@ -25,6 +25,12 @@
   --positive: #1a7f4b;
   --negative: #b4432c;
   --warning: #9a6612;
+
+  /* Stat-card icon accents — a distinct hue per metric, purely for quick visual
+     scanning (colour never carries meaning on its own; label + value do). */
+  --stat-blue: #2f6fed;
+  --stat-purple: #7c53d1;
+  --stat-orange: #c97a1f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -39,6 +45,9 @@
     --positive: #5cba84;
     --negative: #e0785d;
     --warning: #d4a444;
+    --stat-blue: #6ea8ff;
+    --stat-purple: #b79aef;
+    --stat-orange: #f0a94e;
   }
 }
 
@@ -53,6 +62,9 @@
   --positive: #5cba84;
   --negative: #e0785d;
   --warning: #d4a444;
+  --stat-blue: #6ea8ff;
+  --stat-purple: #b79aef;
+  --stat-orange: #f0a94e;
 }
 
 * {

@@ -1,15 +1,18 @@
 import "server-only";
 
 import { db, DAY_MS, isoDate } from "./seed";
-import type {
-  AnalyticsSummary,
-  MetricSummary,
-  Order,
-  OrderDetail,
-  OrderQuery,
-  Paginated,
-  SystemActivity,
-  TimeSeriesPoint,
+import {
+  ORDER_STATUSES,
+  type AnalyticsSummary,
+  type MetricSummary,
+  type Order,
+  type OrderDetail,
+  type OrderQuery,
+  type OrderStatus,
+  type Paginated,
+  type StatusShare,
+  type SystemActivity,
+  type TimeSeriesPoint,
 } from "@/types/domain";
 
 /**
@@ -200,5 +203,27 @@ export async function getAnalyticsSummary(windowDays = 30): Promise<AnalyticsSum
     conversionRate: buildMetric(conversionOf(current), conversionOf(previous)),
     revenueSeries: seriesFor(start, end, (b) => b.revenue),
     ordersSeries: seriesFor(start, end, (b) => b.orders),
+    statusBreakdown: buildStatusBreakdown(current),
   };
+}
+
+/**
+ * Counts orders per status within the window and sorts by share descending, so
+ * the breakdown card's bars are already in the order they should render.
+ */
+function buildStatusBreakdown(orders: typeof db.orders): StatusShare[] {
+  const counts = new Map<OrderStatus, number>();
+  for (const order of orders) {
+    counts.set(order.status, (counts.get(order.status) ?? 0) + 1);
+  }
+
+  const total = orders.length;
+  return ORDER_STATUSES.map((status) => {
+    const count = counts.get(status) ?? 0;
+    return {
+      status,
+      count,
+      share: total === 0 ? 0 : Math.round((count / total) * 1000) / 1000,
+    };
+  }).sort((a, b) => b.count - a.count);
 }

@@ -3,11 +3,11 @@ import { Header } from "@/components/layout/Header";
 import { Card, CardHeader, Skeleton } from "@/components/ui/primitives";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { TrendChart } from "@/components/dashboard/TrendChart";
+import { StatusBreakdown } from "@/components/dashboard/StatusBreakdown";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { analyticsService, ordersService, activitiesService } from "@/lib/api/services";
 import {
-  formatCompactCurrency,
   formatCurrency,
   formatNumber,
   formatPercent,
@@ -86,21 +86,25 @@ async function MetricsSection() {
         label="Total revenue"
         formattedValue={formatCurrency(summary.totalRevenue.value)}
         metric={summary.totalRevenue}
+        accent="revenue"
       />
       <StatCard
         label="Total orders"
         formattedValue={formatNumber(summary.totalOrders.value)}
         metric={summary.totalOrders}
+        accent="orders"
       />
       <StatCard
         label="Active customers"
         formattedValue={formatNumber(summary.activeCustomers.value)}
         metric={summary.activeCustomers}
+        accent="customers"
       />
       <StatCard
         label="Conversion rate"
         formattedValue={formatPercent(summary.conversionRate.value)}
         metric={summary.conversionRate}
+        accent="conversion"
       />
     </div>
   );
@@ -110,30 +114,31 @@ async function ChartsSection() {
   const summary = await analyticsService.getSummary(30, { cache: "no-store" });
 
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Card>
+    <div className="grid gap-5 xl:grid-cols-3">
+      <Card className="xl:col-span-2">
         <CardHeader title="Revenue" description="Daily, last 30 days" />
         {/*
-          `formatValue` is passed from a Server Component to a Client Component.
-          Functions are not serialisable across that boundary — this works only
-          because the chart is imported into a Server Component and Next
-          serialises the *reference* at build time for a module-scope function.
-          Inline arrow functions would be re-created per render and are avoided.
+          `formatType` is a plain string ("currency"), not a function — a
+          Server Component cannot pass a function reference to a Client
+          Component across the RSC boundary. TrendChart resolves the real
+          formatter internally. See its FORMATTERS lookup.
         */}
         <TrendChart
           data={summary.revenueSeries}
           variant="area"
-          formatValue={formatCompactCurrency}
+          formatType="currency"
           ariaLabel="Daily revenue over the last 30 days"
         />
       </Card>
 
-      <Card>
+      <StatusBreakdown data={summary.statusBreakdown} />
+
+      <Card className="xl:col-span-2">
         <CardHeader title="Orders" description="Daily, last 30 days" />
         <TrendChart
           data={summary.ordersSeries}
           variant="bar"
-          formatValue={formatNumber}
+          formatType="number"
           ariaLabel="Daily order count over the last 30 days"
         />
       </Card>
@@ -178,18 +183,41 @@ function MetricsSkeleton() {
 
 function ChartsSkeleton() {
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      {Array.from({ length: 2 }).map((_, i) => (
-        <Card key={i}>
-          <div className="border-b border-line px-5 py-4">
-            <Skeleton className="h-3.5 w-24" />
-            <Skeleton className="mt-2 h-3 w-32" />
-          </div>
-          <div className="px-5 py-4">
-            <Skeleton className="h-[200px] w-full" />
-          </div>
-        </Card>
-      ))}
+    <div className="grid gap-5 xl:grid-cols-3">
+      <Card className="xl:col-span-2">
+        <div className="border-b border-line px-5 py-4">
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="mt-2 h-3 w-32" />
+        </div>
+        <div className="px-5 py-4">
+          <Skeleton className="h-[200px] w-full" />
+        </div>
+      </Card>
+
+      <Card>
+        <div className="border-b border-line px-5 py-4">
+          <Skeleton className="h-3.5 w-32" />
+          <Skeleton className="mt-2 h-3 w-40" />
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i}>
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="mt-2 h-1.5 w-full rounded-full" />
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="xl:col-span-2">
+        <div className="border-b border-line px-5 py-4">
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="mt-2 h-3 w-32" />
+        </div>
+        <div className="px-5 py-4">
+          <Skeleton className="h-[200px] w-full" />
+        </div>
+      </Card>
     </div>
   );
 }

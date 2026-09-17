@@ -105,6 +105,15 @@ export interface AnalyticsSummary {
   conversionRate: MetricSummary;
   revenueSeries: TimeSeriesPoint[];
   ordersSeries: TimeSeriesPoint[];
+  /** Share of orders (last 30 days) by status, for the breakdown card. */
+  statusBreakdown: StatusShare[];
+}
+
+export interface StatusShare {
+  status: OrderStatus;
+  count: number;
+  /** Fraction of the window's total orders, e.g. 0.46 */
+  share: number;
 }
 
 /* -------------------------------------------------------------------------- */
