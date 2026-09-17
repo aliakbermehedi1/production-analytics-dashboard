@@ -2,8 +2,8 @@
 
 A SaaS analytics dashboard built with Next.js 15 (App Router), React 19, TypeScript, and Tailwind CSS, for the Future Studios Bangladesh frontend assignment.
 
-**Live demo:** _add your deployed URL here after `vercel deploy`_
-**Repository:** _add your GitHub URL here_
+**Live demo:** https://production-analytics-dashboard-oyjizq1g3.vercel.app
+**Repository:** https://github.com/aliakbermehedi1/production-analytics-dashboard.git
 
 ---
 
