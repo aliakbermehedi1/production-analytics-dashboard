@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open  https://production-analytics-dashboard-oyjizq1g3.vercel.app
 
 Other scripts:
 
