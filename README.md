@@ -12,7 +12,7 @@ A SaaS analytics dashboard built with Next.js 15 (App Router), React 19, TypeScr
 Requirements: Node.js 20+ and npm.
 
 ```bash
-git clone <your-repo-url>
+git clone <https://github.com/aliakbermehedi1/production-analytics-dashboard.git>
 cd analytics-dashboard
 npm install
 npm run dev
